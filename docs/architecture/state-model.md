@@ -36,21 +36,35 @@ Lifecycle owner: Investigation runtime.
 
 Updated when the investigation moves between steps.
 
+## tool_results
+
+Purpose: Stores the execution results returned by tools during the investigation.
+
+Type: List of `ToolResult` objects as defined in `tool-contract.md`.
+
+Lifecycle Owner: Investigation runtime.
+
+Rules:
+
+- One record is appended for every tool execution.
+- Results are stored before evidence normalization occurs.
+- Results are not modified after being recorded.
+- A failed or partial tool execution must still be recorded.
+
 ## evidence
 
-Purpose: Stores observations collected from Kubernetes.
+Purpose: Stores normalized factual observations collected during the investigation.
 
-Type: List of evidence records.
+Type: List of `EvidenceRecord` objects as defined in `evidence-model.md`.
 
-Each evidence record contains:
+Lifecycle Owner: Evidence normalization stage.
 
-* id: string
-* source: string
-* observation: string
+Rules:
 
-Lifecycle owner: Evidence collector.
-
-Records are appended during evidence collection and are not modified afterward.
+- Records are appended after tool results are normalized into evidence.
+- Records are not modified after creation.
+- Each record must reference the raw tool output from which it was derived.
+- The diagnosis may cite evidence only through evidence IDs.
 
 ## decision
 

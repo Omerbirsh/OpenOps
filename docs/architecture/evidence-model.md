@@ -12,7 +12,7 @@ Purpose: Uniquely identifies the evidence within an investigation.
 
 Type: Unique identifier.
 
-Lifecycle Owner: Assigned by the evidence collection stage.
+Lifecycle Owner: Assigned by the evidence normalization stage.
 Never changes.
 
 ---
@@ -29,7 +29,7 @@ Examples
 - kubectl_describe_pod
 - kubectl_get_events
 
-Lifecycle Owner: Assigned by the evidence collection stage.
+Lifecycle Owner: Assigned by the evidence normalization stage.
 Never changes.
 
 ---
@@ -40,7 +40,7 @@ Purpose: Records when the evidence was collected.
 
 Type: Timestamp.
 
-Lifecycle Owner: Assigned by the evidence collection stage.
+Lifecycle Owner: Assigned by the evidence normalization stage.
 Never changes.
 
 ---
@@ -57,7 +57,7 @@ Contains:
 - resource_kind
 - resource_name
 
-Lifecycle Owner: Assigned by the evidence collection stage.
+Lifecycle Owner: Assigned by the evidence normalization stage.
 Never changes.
 
 ---
@@ -73,7 +73,7 @@ Examples
 - Readiness probe failed with HTTP 404.
 - Pod is Running but 0/1 Ready.
 
-Lifecycle Owner: Written by the evidence collection stage.
+Lifecycle Owner: Written by the evidence normalization stage.
 Never changes.
 
 ---
@@ -89,7 +89,7 @@ Values
 - internal
 - sensitive
 
-Lifecycle Owner: Assigned by the evidence collection stage.
+Lifecycle Owner: Assigned by the evidence normalization stage.
 
 ---
 
@@ -100,10 +100,10 @@ Purpose: Points to the original tool output from which the observation was deriv
 Type: Reference metadata.
 
 Examples
-- Command executed
-- Output location
-- Log file reference
-- Artifact path
+- Stored stdout and stderr artifact path
+- Preserved Kubernetes API response location
+- Raw command output artifact identifier
+- Log output location
 
-Lifecycle Owner: Assigned by the evidence collection stage.
+Lifecycle Owner: Assigned by the evidence normalization stage.
 Never changes.
