@@ -1,165 +1,90 @@
-# Read-Only Kubernetes Authorization Boundary
+# v0 Read-Only Kubernetes Boundary
 
-OpenOps operates with a dedicated Kubernetes identity restricted to the minimum read permissions required by the first workflow.
+Safety is enforced outside the decision model by fixed intake validation, a dedicated Kubernetes identity, Kubernetes RBAC, and collectors that expose only predefined reads. Model instructions are not a security control.
 
-Safety is enforced by Kubernetes authorization and the tool adapter. It does not depend on model instructions or model compliance.
+## Two identities with separate purposes
 
----
+Scenario setup and OpenOps runtime execution use different Kubernetes identities:
 
-## Permitted Operations
+- `kind-openops-lab` is the administrative context created by `kind`. It may be used only by human-invoked scenario setup, fault, reset, verification, and teardown commands.
+- `openops-reader@kind-openops-lab` is the only context accepted by the OpenOps CLI. It authenticates as ServiceAccount `openops-reader` in namespace `openops-lab`.
 
-OpenOps may perform only read-equivalent Kubernetes operations.
+The runtime must load the explicitly named reader context. It must not use the current context, fall back to the administrative context, inherit a user's broader identity, or accept an arbitrary kubeconfig context.
 
-Allowed verbs:
+## RBAC allowlist
 
-* `get`
-* `list`
-* `watch`
+The namespace Role for `openops-reader` permits only:
 
-For the first workflow, the runtime may read only:
+| API group | Resource | Verbs | Scope |
+| --- | --- | --- | --- |
+| `apps` | `deployments` | `get` | Deployment `readiness-demo` |
+| core | `pods` | `get`, `list` | Namespace `openops-lab` |
+| core | `events` | `get`, `list` | Namespace `openops-lab` |
 
-* Deployments
-* ReplicaSets
-* Pods
-* Events
+No `watch` permission is required. The Role grants no access to ReplicaSets, Secrets, ConfigMaps, logs, nodes, or resources in another namespace.
 
-Permitted namespaces:
+RBAC cannot restrict a Pod or Event list by workload ownership. The Pod collector therefore uses the fixed label selector and discards nonmatching results. The Event collector queries and filters by the exact collected Deployment and Pod UIDs. This adapter filtering is required in addition to RBAC.
 
-* The namespace supplied in the investigation objective
+## Fixed execution allowlist
 
-Permitted targets:
+The runtime may execute only the three operations documented in the [architecture overview](../overview.md#fixed-collectors), in that order and at most once each.
 
-* The specified workload
-* Pods and ReplicaSets owned by that workload
-* Events associated with those resources
+Collector parameters come from the validated objective and fixed scenario constants. The model supplies none of them. There is no generic Kubernetes request function exposed to the model or CLI.
 
-Cluster-wide collection is not permitted.
+Before constructing a Kubernetes request, the runtime verifies:
 
----
+- context is `openops-reader@kind-openops-lab`;
+- namespace is `openops-lab`;
+- workload kind is `Deployment`;
+- workload name is `readiness-demo`; and
+- the requested operation matches the current fixed collector.
 
-## Permitted Evidence
+Any mismatch fails before contacting Kubernetes.
 
-The allowed operations may collect:
+## Forbidden capabilities
 
-* Deployment specification and status
-* ReplicaSet specification and status
-* Pod specification and status
-* Container readiness state
-* Readiness probe configuration
-* Pod conditions
-* Container restart information
-* Kubernetes events related to the investigation target
+The runtime contains no path for:
 
-The first workflow does not require access to Secrets, ConfigMaps, application logs, node data, or unrelated workloads.
+- `create`, `update`, `patch`, `delete`, or `deletecollection`;
+- Pod `exec`, `attach`, logs, port-forwarding, or ephemeral containers;
+- node or host access;
+- raw API paths or user-provided Kubernetes verbs;
+- arbitrary `kubectl`, shell commands, command-line flags, or subprocesses;
+- model-selected tools or model-authored parameters;
+- modifying probes, restarting Pods, scaling workloads, or applying manifests.
 
----
+The model may recommend a correction, but the report renderer is the end of the runtime path.
 
-## Forbidden Kubernetes Mutations
+## Credential boundary
 
-The OpenOps identity must not have permission to perform any mutating verb, including:
+Kubernetes and model-provider credentials remain in their respective client/configuration layers. They are never fields in the objective, state, tool result, evidence, model context, report, or safe error summary.
 
-* `create`
-* `update`
-* `patch`
-* `delete`
-* `deletecollection`
+The Kubernetes adapter must not serialize:
 
-OpenOps must not:
+- kubeconfig content;
+- bearer tokens or client certificates;
+- authentication headers;
+- complete client configuration;
+- raw exception representations that may embed request details.
 
-* Modify workload specifications
-* Restart or delete Pods
-* Scale workloads
-* Change readiness probes
-* Create debugging resources
-* Apply manifests
-* Perform remediation
+The model receives normalized evidence only.
 
-Recommendations may be returned to the engineer, but OpenOps cannot execute them.
+## Raw and model-visible data
 
----
+Allowlisted Kubernetes output is bounded and retained in-memory inside `ToolResult.data`. It is not automatically safe for the model. Only deterministic `EvidenceRecord` observations marked `internal` may enter model context.
 
-## Forbidden Execution Operations
+Complete Event messages, annotations, labels other than the fixed selector, environment variables, volume definitions, and managed fields are excluded from model context. Raw output is not printed in the report or written to a persistent artifact by v0.
 
-OpenOps must not execute commands inside containers or nodes.
+## Authorization failure
 
-The following are forbidden:
+An authorization denial produces a failed `ToolResult` with:
 
-* Pod `exec`
-* Pod `attach`
-* Ephemeral container creation
-* Port forwarding
-* Node shell access
-* Host command execution
-* Arbitrary `kubectl` command execution
-* Shell subprocesses constructed by the model
+- `error_category: authorization`;
+- `retryable: false`; and
+- a bounded message that names only the denied collector operation.
 
-The model may select only from predefined read-only tool contracts.
+The runtime does not broaden the request, switch identity, or escalate permissions. The remaining fixed collectors are still attempted once, and the normal failure rules apply.
 
----
+## Required negative verification
 
-## Tool Enforcement
-
-Each Kubernetes collector must map to a predefined operation with fixed authorization requirements.
-
-The model may provide only validated parameters such as:
-
-* cluster context
-* namespace
-* workload kind
-* workload name
-
-The model must not provide:
-
-* Kubernetes verbs
-* Arbitrary resource paths
-* Shell commands
-* Command-line flags
-* Raw API requests
-
-The tool adapter must reject operations outside the permitted resource and verb allowlist before contacting the Kubernetes API.
-
----
-
-## Credential Boundary
-
-OpenOps must use a dedicated Kubernetes identity.
-
-That identity must:
-
-* Have read-only access to the permitted resources
-* Be restricted to the investigation namespace
-* Have no mutation permissions
-* Have no Pod execution permissions
-* Have no access to Secrets
-* Have no cluster-admin privileges
-
-The runtime must not inherit broader permissions from the engineer's personal Kubernetes identity.
-
----
-
-## Authorization Failure
-
-If Kubernetes denies a requested read:
-
-1. The collector returns a failed `ToolResult`.
-2. `error_category` is set to `authorization`.
-3. `retryable` is set to `false`.
-4. OpenOps does not attempt a broader or alternative privileged operation.
-5. The investigation continues only when the remaining permitted evidence is sufficient.
-
-OpenOps must never respond to an authorization failure by escalating its own permissions.
-
----
-
-## Boundary Invariant
-
-Every Kubernetes interaction in the first workflow must satisfy all of the following:
-
-* The verb is `get`, `list`, or `watch`.
-* The resource is a Deployment, ReplicaSet, Pod, or Event.
-* The resource belongs to the investigation namespace.
-* The resource is the investigation target or is related to it.
-* No shell or container execution is involved.
-* No Kubernetes object is mutated.
-
-Any operation that violates one of these conditions must be rejected before execution.
+Phase 2 must verify with the runtime identity that required reads succeed and that Deployment mutation, Pod deletion, Secret reads, and Pod exec are denied. Collector tests must also prove that an invalid target is rejected before an SDK call and that unrelated listed objects are discarded.

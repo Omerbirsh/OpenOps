@@ -1,112 +1,42 @@
 # FinalDiagnosis v0
 
-`FinalDiagnosis` is the structured conclusion produced by the decision stage.
+`FinalDiagnosis` is the structured candidate returned by the one decision-model call. It becomes final only after deterministic validation against `InvestigationState.evidence`.
 
-It must be validated before being stored in `InvestigationState.decision` or returned in the final report.
+## Fields
 
----
+| Field | Type | Rule |
+| --- | --- | --- |
+| `cause` | string, 1-1,000 characters | States one most likely cause. |
+| `confidence` | enum | `low`, `medium`, or `high`. |
+| `evidence_ids` | non-empty list of strings | Unique IDs of supporting `EvidenceRecord` objects. |
+| `alternatives` | list of 0-5 strings, each 1-500 characters | Other plausible causes or unresolved uncertainty; present even when empty. |
+| `recommendation` | string, 1-1,000 characters | A next action for an engineer; OpenOps does not execute it. |
 
-## cause
+The decision model may receive only the immutable objective, normalized model-visible evidence, the output schema, and bounded diagnosis instructions. It must not receive `ToolResult`, `raw_reference`, raw Kubernetes objects, credentials, or collection controls.
 
-Purpose: States the most likely root cause of the incident.
+## Mechanical validation
 
-Type: Non-empty string.
+The validator is application code. It performs only checks that can be determined without another model call:
 
-Lifecycle Owner: Written by the decision stage.
+1. all five fields are present with the declared types;
+2. string and list lengths satisfy the declared bounds after trimming;
+3. `confidence` is an allowed value;
+4. `evidence_ids` is non-empty and contains no duplicates;
+5. every evidence ID exists in `InvestigationState.evidence`; and
+6. every cited record is model-visible (`sensitivity: internal`).
 
-Rules:
+If any check fails:
 
-* Must describe one concrete cause.
-* Must not present speculation as confirmed fact.
-* Must be supported by the referenced evidence.
+- the candidate is discarded;
+- `InvestigationState.decision` remains null;
+- no second model call is made;
+- the investigation finishes with `status: failed`; and
+- no diagnosis report is rendered.
 
----
+If all checks pass, the runtime writes the diagnosis once to `InvestigationState.decision`.
 
-## confidence
+## Behavioral expectations and evaluation
 
-Purpose: Expresses how strongly the available evidence supports the diagnosis.
+Whether the cause is actually supported by the cited evidence, whether confidence is calibrated, and whether the recommendation is appropriate are quality properties. They are tested against the known scenario and fixtures; they are not falsely presented as deterministic schema validation.
 
-Type: Enumeration.
-
-Values:
-
-* low
-* medium
-* high
-
-Lifecycle Owner: Written by the decision stage.
-
-Rules:
-
-* `high` requires direct and consistent supporting evidence.
-* `medium` means the evidence supports the cause but meaningful uncertainty remains.
-* `low` means the cause is plausible but weakly supported.
-
----
-
-## evidence_ids
-
-Purpose: Identifies the evidence records supporting the diagnosis.
-
-Type: Non-empty list of unique evidence ID strings.
-
-Lifecycle Owner: Written by the decision stage.
-
-Rules:
-
-* Every value must match an existing `EvidenceRecord.id` in `InvestigationState.evidence`.
-* Unsupported or unknown evidence IDs are invalid.
-* Duplicate evidence IDs are invalid.
-* The diagnosis must not reference `ToolResult` objects directly.
-* At least one evidence ID is required.
-* Every cited evidence record must materially support the stated cause.
-
----
-
-## alternatives
-
-Purpose: Records other plausible causes or unresolved uncertainty.
-
-Type: List of strings.
-
-Lifecycle Owner: Written by the decision stage.
-
-Rules:
-
-* May be empty only when the evidence supports the cause with high confidence and no meaningful uncertainty remains.
-* Alternatives must not contradict confirmed evidence.
-* Each entry must describe a distinct plausible explanation or unresolved limitation.
-
----
-
-## recommendation
-
-Purpose: Provides the next action the engineer should take.
-
-Type: Non-empty string.
-
-Lifecycle Owner: Written by the decision stage.
-
-Rules:
-
-* Must be directly related to the diagnosed cause.
-* Must be actionable by an engineer.
-* Must not perform remediation automatically.
-* Must not recommend unsupported changes.
-
----
-
-## Validation Rules
-
-A `FinalDiagnosis` is valid only when all of the following are true:
-
-* `cause` is present and non-empty.
-* `confidence` is one of the allowed values.
-* `evidence_ids` contains at least one unique ID.
-* Every evidence ID exists in `InvestigationState.evidence`.
-* Every cited evidence record supports the diagnosis.
-* `alternatives` is present, even when empty.
-* `recommendation` is present and non-empty.
-* No conclusion depends directly on unnormalized tool output.
-
-If any validation rule fails, the diagnosis must not be stored or returned as a completed investigation result.
+For the reference scenario, acceptance requires a high-confidence diagnosis that attributes the unready Pod to the HTTP readiness probe at `/ready` returning 404, cites probe configuration, Pod readiness, and Event evidence, and recommends aligning the probe with a successful endpoint without performing remediation.

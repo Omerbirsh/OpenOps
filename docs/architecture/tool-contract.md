@@ -1,166 +1,67 @@
 # ToolResult v0
 
-`ToolResult` is the deterministic envelope returned by every tool execution.
+`ToolResult` is the immutable record of one collector execution. It records execution and bounded collector output; it is not evidence and must not contain a diagnosis.
 
-It normalizes complete success, partial success, and failure so the investigation runtime does not need tool-specific error handling.
+The runtime appends a `ToolResult` to `InvestigationState.tool_results` immediately after each collector returns and before normalization begins.
 
----
+## Fields
 
-## success
+| Field | Type | Owner and rule |
+| --- | --- | --- |
+| `id` | string | Runtime-assigned, unique within the investigation. Fixed execution order makes `tool-001`, `tool-002`, and `tool-003` sufficient for v0. |
+| `source_tool` | enum | Collector-assigned: `kubernetes_deployment`, `kubernetes_pods`, or `kubernetes_events`. |
+| `collected_at` | timestamp | Collector completion time in UTC. |
+| `status` | enum | `success`, `partial`, or `failure`. |
+| `data` | collector-specific structured data or null | Bounded, allowlisted Kubernetes response fields. This is raw relative to evidence normalization, not a complete SDK object. |
+| `raw_reference` | string or null | Runtime-created reference to this result's preserved `data`; see below. |
+| `error_category` | enum or null | `invalid_input`, `authentication`, `authorization`, `not_found`, `timeout`, `unavailable`, `malformed_response`, or `execution_error`. |
+| `error_message` | string up to 512 characters or null | Safe summary for the engineer. It must not contain credentials, kubeconfig content, response bodies, stack traces, or arbitrary exception representations. |
+| `retryable` | boolean | Collector classification only. The v0 runtime does not retry automatically. |
+| `duration_ms` | non-negative integer | Complete collector execution duration. |
+| `truncated` | boolean | Whether collector output was omitted to satisfy the output limit. |
 
-Purpose: Indicates whether the tool completed successfully.
+## Status invariants
 
-Type: Boolean.
+### Success
 
-Lifecycle Owner: Set by the tool adapter after execution.
+- `status` is `success`.
+- `data` is present.
+- `error_category` and `error_message` are null.
+- `retryable` is false.
 
-Rules:
+### Partial
 
-- `true` means the requested operation completed successfully.
-- `false` means the operation failed or produced only a partial result.
+- `status` is `partial`.
+- `data` contains at least one usable value.
+- `error_category` and a safe `error_message` are present.
+- `retryable` reflects the error, but the runtime still does not retry.
 
----
+### Failure
 
-## data
+- `status` is `failure`.
+- `data` is null.
+- `error_category` and a safe `error_message` are present.
+- `truncated` is false unless an oversized error response was deliberately discarded.
 
-Purpose: Stores the normalized result returned by the tool.
+`duration_ms` and `collected_at` are required for every status.
 
-Type: Tool-specific structured data or null.
+## Raw output and `raw_reference`
 
-Lifecycle Owner: Written by the tool adapter.
+v0 does not introduce a raw-artifact store. The bounded `data` retained inside the immutable `ToolResult` is the preserved collector output for the lifetime of the in-memory investigation.
 
-Rules:
-- Present when usable data was returned.
-- May be present even when `success` is `false` if the tool produced a partial result.
-- Must be `null` when no usable data was returned.
+When `data` is present:
 
----
-## raw_reference
+- `raw_reference` must equal `tool-result:<ToolResult.id>#/data`;
+- the runtime owns creation and resolution of the reference;
+- every `EvidenceRecord` derived from the result copies this exact reference; and
+- multiple evidence records may use the same reference.
 
-Purpose: Points to the preserved raw output produced by this tool execution.
+When `data` is null, `raw_reference` is null and no evidence may be produced from the result.
 
-Type: Reference metadata or null.
+Raw references are investigation-local. They are not file paths, URLs, credentials, or persistent identifiers. Persistence is deferred.
 
-Examples:
+## Output boundary
 
-- Stored stdout and stderr artifact path
-- Preserved Kubernetes API response location
-- Raw command output artifact identifier
-- Log output location
+Each collector must select permitted fields before constructing `ToolResult.data`. It must not store complete Kubernetes objects merely to truncate them later. Each result is limited to 64 KiB after serialization. Lists are deterministically ordered and shortened when necessary, and `truncated` is then true.
 
-Lifecycle Owner: Set by the tool adapter after execution.
-
-Rules:
-
-- Must be present when raw output was produced and preserved.
-- May be `null` when the tool produced no output.
-- Evidence created from this result must reference this raw output.
-- Must not contain normalized investigation conclusions.
-
----
-
-## error_category
-
-Purpose: Classifies the reason the tool did not complete successfully.
-
-Type: Enumeration or null.
-
-Values:
-
-- invalid_input
-- authentication
-- authorization
-- not_found
-- timeout
-- unavailable
-- rate_limited
-- execution_error
-- malformed_response
-- unknown
-
-Lifecycle Owner: Set by the tool adapter when `success` is `false`.
-
-Rules:
-
-- Must be `null` when the tool completes successfully.
-- Must be present when the tool fails.
-
----
-
-## retryable
-
-Purpose: Indicates whether repeating the same tool call may succeed without changing the request.
-
-Type: Boolean.
-
-Lifecycle Owner: Set by the tool adapter based on the error category and execution result.
-
-Examples:
-
-- A timeout may be retryable.
-- An authorization failure is not retryable.
-- An invalid workload name is not retryable.
-
----
-
-## duration_ms
-
-Purpose: Records how long the tool execution took.
-
-Type: Non-negative integer representing milliseconds.
-
-Lifecycle Owner: Measured by the tool runtime.
-
-Rules:
-
-- Includes the complete tool execution duration.
-- Must be present for both successful and failed executions.
-
----
-
-## truncated
-
-Purpose: Indicates whether the returned data or raw output was shortened because of an output limit.
-
-Type: Boolean.
-
-Lifecycle Owner: Set by the tool adapter.
-
-Rules:
-
-- `true` means some output was omitted.
-- `false` means the complete available output was returned.
-- A truncated result may still be successful and usable.
-
----
-
-## Result Semantics
-
-A complete success has:
-
-- `success: true`
-- usable `data`
-- `raw_reference` when raw output was preserved
-- `error_category: null`
-- `retryable: false`
-- a recorded `duration_ms`
-- an explicit `truncated` value
-
-A partial result has:
-
-- `success: false`
-- some usable `data` or preserved raw output
-- an `error_category`
-- an explicit `retryable` value
-- a recorded `duration_ms`
-- an explicit `truncated` value
-
-A complete failure has:
-
-- `success: false`
-- `data: null`
-- `raw_reference: null` unless error output was preserved
-- an `error_category`
-- an explicit `retryable` value
-- a recorded `duration_ms`
-- an explicit `truncated` value
+Collector-specific allowed fields are defined in the [architecture overview](overview.md#fixed-collectors).

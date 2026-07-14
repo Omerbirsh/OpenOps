@@ -20,6 +20,8 @@ The CLI is the only supported entry point for the first implementation.
 
 No REST API, gRPC service, or web interface will be developed in this milestone.
 
+The v0 command and validated options are defined in `docs/product/intake.md`. The CLI runs one investigation synchronously and returns either one completed human-readable report or a non-zero failure. It is not a chat interface.
+
 ## Alternatives Considered
 
 ### REST API

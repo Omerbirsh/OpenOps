@@ -1,110 +1,69 @@
 # InvestigationState v0
 
-`InvestigationState` is the structured record of one OpenOps investigation.
+`InvestigationState` is the single in-memory record of one investigation. Intake validation happens before state creation. The runtime owns state transitions and list appends.
 
-It is created when an investigation starts and updated as the runtime collects evidence and produces a diagnosis.
+## Fields
 
-## objective
+| Field | Type | Lifecycle |
+| --- | --- | --- |
+| `objective` | validated investigation objective | Copied once from intake and never modified. |
+| `phase` | enum | Runtime-owned: `collecting`, `deciding`, or `finished`. |
+| `status` | enum | Runtime-owned: `running`, `completed`, or `failed`. |
+| `tool_results` | list of `ToolResult` | Append-only; one entry for every attempted collector execution. |
+| `evidence` | list of `EvidenceRecord` | Append-only; populated by deterministic normalization after collection. |
+| `decision` | `FinalDiagnosis` or null | Null until a candidate passes validation; then written once by the runtime. |
+| `limits` | fixed execution limits | Set at creation and never modified. |
+| `failure` | failure summary or null | Set only when status becomes `failed`. |
 
-Purpose: Defines what OpenOps is investigating.
+The objective fields are defined in [intake.md](../product/intake.md). `ToolResult`, `EvidenceRecord`, and `FinalDiagnosis` are defined in their respective architecture contracts.
 
-Type: Investigation objective containing:
+## Fixed limits
 
-* cluster_context: string
-* namespace: string
-* workload_kind: string
-* workload_name: string
-* symptom: string
-* time_window: optional string
+| Limit | v0 value |
+| --- | --- |
+| `max_tool_executions` | 3 |
+| `max_tool_result_bytes` | 64 KiB per result |
+| `max_event_items` | 20 |
+| `max_evidence_records` | 20 |
+| `max_model_calls` | 1 |
+| `max_model_output_tokens` | 1,000 |
 
-Lifecycle owner: Intake.
+These are safety bounds, not planning controls. They are constants for v0 rather than user configuration.
 
-Created once and not modified after the investigation starts.
+## State transitions
 
-## phase
+The only successful path is:
 
-Purpose: Identifies the current investigation step.
+```text
+collecting/running
+    -> deciding/running
+    -> finished/completed
+```
 
-Type: Enum:
+Any runtime failure produces:
 
-* intake
-* collecting_evidence
-* deciding
-* finished
+```text
+<current phase>/running
+    -> finished/failed
+```
 
-Lifecycle owner: Investigation runtime.
+There is no transition from `finished`, no return from `deciding` to `collecting`, and no retry loop.
 
-Updated when the investigation moves between steps.
+## Collection and evidence rules
 
-## tool_results
+- The runtime attempts the three collectors once in their fixed order.
+- Each returned result is appended before any normalization.
+- After all three attempts, the normalizer processes stored results in the same order.
+- Existing results and evidence records are immutable.
+- If normalization produces no evidence, the investigation fails without a model call.
+- Partial and failed results are retained and later rendered as collection warnings when a report can still be completed.
 
-Purpose: Stores the execution results returned by tools during the investigation.
+## Failure summary
 
-Type: List of `ToolResult` objects as defined in `tool-contract.md`.
+`failure` contains:
 
-Lifecycle Owner: Investigation runtime.
+- `stage`: `collection`, `normalization`, `model`, or `validation`;
+- `category`: a bounded machine-readable value; and
+- `message`: a safe human-readable summary without credentials, raw object content, or stack traces.
 
-Rules:
-
-- One record is appended for every tool execution.
-- Results are stored before evidence normalization occurs.
-- Results are not modified after being recorded.
-- A failed or partial tool execution must still be recorded.
-
-## evidence
-
-Purpose: Stores normalized factual observations collected during the investigation.
-
-Type: List of `EvidenceRecord` objects as defined in `evidence-model.md`.
-
-Lifecycle Owner: Evidence normalization stage.
-
-Rules:
-
-- Records are appended after tool results are normalized into evidence.
-- Records are not modified after creation.
-- Each record must reference the raw tool output from which it was derived.
-- The diagnosis may cite evidence only through evidence IDs.
-
-## decision
-
-Purpose: Stores the final diagnosis.
-
-Type: Optional diagnosis containing:
-
-* cause: string
-* confidence: string
-* evidence_ids: list of strings
-* alternatives: list of strings
-* recommendation: string
-
-Lifecycle owner: Decision stage.
-
-Empty until enough evidence has been collected, then written once.
-
-## budgets
-
-Purpose: Prevents the investigation from running without limits.
-
-Type: Execution limits containing:
-
-* max_evidence_items: integer
-* max_steps: integer
-
-Lifecycle owner: Investigation runtime.
-
-Defined when the investigation starts and read during execution.
-
-## status
-
-Purpose: Represents the final operational state of the investigation.
-
-Type: Enum:
-
-* running
-* completed
-* failed
-
-Lifecycle owner: Investigation runtime.
-
-Starts as `running` and ends as either `completed` or `failed`.
+The state is not persisted in v0. A future persistence design must not be inferred from this in-memory contract.

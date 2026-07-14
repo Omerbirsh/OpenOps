@@ -14,9 +14,9 @@ Introducing multiple repositories or independently deployable services would inc
 
 OpenOps will be developed as a single monorepo.
 
-The runtime will be implemented as a modular monolith composed of logical modules with explicit responsibilities.
+The runtime will be one installable application in one repository. Source files may separate CLI intake, Kubernetes reads, schemas, normalization, decision, validation, and report rendering so each behavior can be tested directly.
 
-Modules may evolve independently but are built, tested, and released as a single application.
+This decision does not authorize a module framework, internal service layer, plugin boundary, or unused future package. Every source area must be exercised by the first workflow.
 
 ## Alternatives Considered
 
@@ -41,7 +41,7 @@ Rejected because the first workflow has no scalability or deployment requirement
 ### Negative
 
 * The repository grows over time.
-* Modules require discipline to avoid tight coupling.
+* Logical boundaries still require discipline to keep Kubernetes response formats out of decision code.
 
 ## Revisit Trigger
 

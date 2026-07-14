@@ -1,292 +1,164 @@
-# First Workflow Architecture
+# v0 First-Workflow Architecture
 
-The first OpenOps workflow investigates a Kubernetes Deployment whose Pods fail to become Ready because of a broken readiness probe.
-
-The workflow uses only Kubernetes-native, read-only evidence.
+The first workflow is one deterministic, read-only investigation of the reference broken-readiness scenario. It is an in-process CLI workflow, not an agent loop.
 
 ```mermaid
 flowchart TD
-    A[Investigation Intake] --> B[Investigation Runtime]
-    B --> C[Kubernetes Collectors]
-    C --> D[ToolResult]
-    D --> E[Evidence Normalizer]
-    E --> F[EvidenceRecord]
-    F --> G[InvestigationState]
-    G --> H[Decision Model]
-    H --> I[FinalDiagnosis Validator]
-    I -->|Valid| J[Final Report]
-    I -->|Invalid| B
+    A["Validate fixed CLI intake"] --> B["Create InvestigationState"]
+    B --> C1["1. Read Deployment"]
+    C1 --> C2["2. Read matching Pods"]
+    C2 --> C3["3. Read target Events"]
+    C3 --> D["Store all ToolResults"]
+    D --> E["Deterministically normalize EvidenceRecords"]
+    E --> F{"Any evidence?"}
+    F -->|No| X["Finish failed"]
+    F -->|Yes| G["One decision-model call"]
+    G --> H["Mechanically validate FinalDiagnosis"]
+    H -->|Invalid| X
+    H -->|Valid| I["Store decision once"]
+    I --> J["Render diagnosis and cited evidence"]
+    J --> K["Finish completed"]
 ```
 
----
+There is no model-directed collection, adaptive planning, retry loop, return from decision to collection, or remediation path.
 
-## Investigation Intake
+## Component responsibilities
 
-Purpose: Accepts and validates the investigation request.
+### Intake
 
-Input:
+- Parses the CLI fields defined in [intake.md](../product/intake.md).
+- Rejects any target outside the exact v0 cluster context, namespace, kind, and name.
+- Creates an immutable objective only after validation.
+- Does not contact Kubernetes or the model on invalid input.
 
-* cluster_context
-* namespace
-* workload_kind
-* workload_name
-* symptom
-* optional time_window
+### Investigation runtime
 
-Output: Validated investigation objective.
+- Creates and owns `InvestigationState`.
+- Calls the three collectors once in their fixed order.
+- Appends each `ToolResult` before normalization.
+- Runs deterministic normalization after all three attempts.
+- Makes exactly one model call when at least one evidence record exists.
+- Runs mechanical diagnosis validation.
+- Writes a valid diagnosis once and invokes the report renderer.
+- Converts failures into a bounded state failure summary.
 
-Writes:
+The runtime does not decide which evidence to collect. The collection plan is code-defined for this scenario.
 
-* `InvestigationState.objective`
-* Initial budgets
-* Initial phase and status
+## Fixed collectors
 
----
+Collectors use the official Kubernetes client through the explicit `openops-reader@kind-openops-lab` context. They never invoke `kubectl` or a shell.
 
-## Investigation Runtime
+### 1. Deployment collector
 
-Purpose: Coordinates the investigation workflow and owns state transitions.
+Operation: get `apps/v1` Deployment `openops-lab/readiness-demo`.
 
-Input:
+Allowed output fields:
 
-* Validated investigation objective
-* Current `InvestigationState`
+- metadata: UID, name, namespace, generation;
+- spec: replica count, match labels, strategy type;
+- container: name and HTTP readiness-probe scheme, path, port, and timing fields;
+- status: observed generation, replica counts, and condition type/status/reason.
 
-Output:
+It excludes annotations, managed fields, environment variables, volumes, and unrelated Pod-template fields.
 
-* Tool execution requests
-* Updated investigation phase and status
-* Completed or failed investigation
+`ToolResult.data` shape:
 
-Responsibilities:
+| Field | Type |
+| --- | --- |
+| `uid`, `name`, `namespace` | string |
+| `generation` | integer |
+| `desired_replicas`, `ready_replicas`, `available_replicas`, `unavailable_replicas` | integer |
+| `strategy` | string |
+| `selector` | map of string labels |
+| `containers` | ordered list of `{name, readiness_probe}` |
+| `readiness_probe` | `{type, scheme, path, port, initial_delay_seconds, period_seconds, timeout_seconds, success_threshold, failure_threshold}` |
+| `conditions` | ordered list of `{type, status, reason}` |
 
-* Selects the next collector.
-* Enforces execution budgets.
-* Stores every `ToolResult`.
-* Invokes evidence normalization.
-* Invokes the decision model.
-* Handles diagnosis validation failure.
+Missing optional Kubernetes status values are represented as null rather than invented defaults. Replica counts that Kubernetes semantically omits as zero are normalized to integer zero.
 
----
+### 2. Pod collector
 
-## Kubernetes Collectors
+Operation: list Pods in `openops-lab` using the fixed label selector `app.kubernetes.io/name=readiness-demo`.
 
-Purpose: Collect raw operational data from the target Kubernetes cluster.
+Allowed output fields:
 
-Input:
+- metadata: UID, name, namespace, and owner references needed for provenance;
+- status: phase;
+- conditions: type, status, and reason;
+- container status: name, ready flag, restart count, and state category.
 
-* Cluster context
-* Namespace
-* Workload kind
-* Workload name
-* Collector-specific request
+Pods are sorted by name. The collector does not read Pod logs or the full Pod specification.
 
-Output: `ToolResult`.
+`ToolResult.data` is `{pods: [...]}`. Each Pod contains:
 
-Initial collectors may inspect:
+- `uid`, `name`, `namespace`, and `owner_uids`;
+- `phase`;
+- ordered `conditions` entries `{type, status, reason}`; and
+- ordered `containers` entries `{name, ready, restart_count, state}`.
 
-* Deployment state and specification
-* Pod state and conditions
-* Readiness probe configuration
-* Kubernetes events
+Container entries are sorted by name. `state` is one of `waiting`, `running`, `terminated`, or `unknown`; state detail messages are excluded.
 
-Rules:
+### 3. Event collector
 
-* Collectors are read-only.
-* Every execution returns a `ToolResult`.
-* Collectors do not create evidence or diagnoses.
+Operation: list Events for the collected Deployment UID and Pod UID using Kubernetes field selectors where supported, then filter locally to those exact UIDs and the intake time window.
 
----
+Allowed output fields:
 
-## ToolResult
+- Event UID, type, reason, count, and first/last/series timestamps;
+- involved-object UID, kind, namespace, and name;
+- message, limited to 512 characters, retained only in `ToolResult.data` for normalization.
 
-Purpose: Represents the deterministic result of one tool execution.
+The collector returns at most 20 deterministically ordered Events. It does not collect namespace-wide unrelated Events into the result.
 
-Input: Raw execution outcome.
+`ToolResult.data` is `{events: [...]}`. Each Event contains:
 
-Output: Structured execution result containing:
+- `uid`, `type`, `reason`, `message`, and `count`;
+- `first_seen` and `last_seen` timestamps when available; and
+- `involved_object` as `{uid, kind, namespace, name}`.
 
-* success
-* data
-* raw_reference
-* error_category
-* retryable
-* duration_ms
-* truncated
+Absent timestamps remain null. Event ordering uses `last_seen` descending, then involved-object UID, reason, and Event UID; null timestamps sort last. After filtering and sorting, only the 20 most recent Events are retained. Deduplication uses Event UID.
 
-Storage: Appended to `InvestigationState.tool_results` before evidence normalization.
+## Tool execution and normalization boundary
 
----
+Each collector returns one `ToolResult`. `ToolResult.data` preserves a bounded, allowlisted collector response for the investigation lifetime; it is not evidence and is not sent to the model.
 
-## Evidence Normalizer
+After all collectors finish, the normalizer converts usable result data into immutable `EvidenceRecord` objects. Normalization is deterministic code that uses controlled observation templates. It may extract a readiness-related HTTP status from an Event message, but it never forwards the complete Event message or arbitrary Kubernetes text to the model.
 
-Purpose: Converts tool execution results into normalized factual observations.
+The normalizer does not diagnose. For example:
 
-Input:
+- evidence: `The readiness probe uses HTTP path /ready on port 80.`
+- evidence: `Kubernetes reported HTTP 404 for the readiness probe.`
+- diagnosis: `The readiness probe path does not match a successful application endpoint.`
 
-* `ToolResult`
-* Preserved raw output referenced by the result
-* Investigation objective
+## Model boundary
 
-Output: Zero or more `EvidenceRecord` objects.
+The model input contains only:
 
-Rules:
+- the immutable investigation objective;
+- ordered `EvidenceRecord` fields `id`, `source_tool`, `timestamp`, `target`, and `observation` for `internal` records;
+- the `FinalDiagnosis` output schema; and
+- instructions to diagnose, express uncertainty, cite evidence IDs, and recommend without executing an action.
 
-* Does not diagnose the incident.
-* Does not modify existing evidence.
-* Multiple evidence records may reference the same raw output.
-* Failed or partial tool results may still produce evidence when usable facts exist.
+The model receives no credentials, Kubernetes client configuration, `ToolResult`, `raw_reference`, full resource objects, raw Event messages, collector choices, or executable commands.
 
----
+The model returns one candidate `FinalDiagnosis`. It cannot request more evidence and a malformed or unsupported result is not retried.
 
-## EvidenceRecord
+## Validation and report boundary
 
-Purpose: Represents one stable and traceable factual observation.
+The validator checks schema shape, allowed confidence, non-empty unique evidence IDs, ID existence, and model visibility. It does not claim to prove semantic correctness.
 
-Input: A fact extracted by the evidence normalizer.
+Scenario tests evaluate whether the diagnosis is grounded and correct. A valid diagnosis is stored once, then the report renderer joins each cited ID back to its evidence record and displays the observation. The report never dereferences raw output for display.
 
-Output: Immutable evidence containing:
+## Fixed failure behavior
 
-* id
-* source_tool
-* timestamp
-* target
-* observation
-* sensitivity
-* raw_reference
+- All three collector calls are attempted once, even when an earlier call fails.
+- Failed and partial results remain in state.
+- No evidence means failure before the model call.
+- A model-provider error means failure without retry.
+- Diagnosis-validation failure means failure without retry.
+- A completed report may include collection warnings from partial, failed, or truncated results.
+- Every failure ends in `phase: finished`, `status: failed`.
 
-Storage: Appended to `InvestigationState.evidence`.
+## Current boundary
 
----
-
-## InvestigationState
-
-Purpose: Acts as the single structured record of the investigation.
-
-Input:
-
-* Objective
-* Tool results
-* Evidence records
-* Runtime updates
-* Final diagnosis
-
-Output: Current investigation context for the runtime and decision model.
-
-Contains:
-
-* objective
-* phase
-* tool_results
-* evidence
-* decision
-* budgets
-* status
-
-Rules:
-
-* Tool results are stored before evidence normalization.
-* Evidence is appended after normalization.
-* Existing tool results and evidence records are not modified.
-* The decision model receives normalized evidence, not raw `ToolResult` objects.
-
----
-
-## Decision Model
-
-Purpose: Produces a structured diagnosis from collected evidence.
-
-Input:
-
-* Investigation objective
-* `InvestigationState.evidence`
-
-Output: Candidate `FinalDiagnosis`.
-
-Rules:
-
-* Must satisfy the `FinalDiagnosis` schema.
-* May reference evidence only through evidence IDs.
-* Must not reason directly over `ToolResult` objects or preserved raw output.
-* Must express uncertainty rather than invent unsupported conclusions.
-
----
-
-## FinalDiagnosis Validator
-
-Purpose: Determines whether the candidate diagnosis satisfies the diagnosis contract.
-
-Input:
-
-* Candidate `FinalDiagnosis`
-* Evidence records stored in `InvestigationState.evidence`
-
-Output:
-
-* Validated `FinalDiagnosis`, or
-* Validation errors
-
-Validation includes:
-
-* All required fields are present.
-* Confidence uses an allowed value.
-* At least one evidence ID is provided.
-* Every evidence ID exists in `InvestigationState.evidence`.
-* Evidence IDs are unique.
-* Unsupported evidence IDs are rejected.
-
-A valid diagnosis is written once to `InvestigationState.decision`.
-
-An invalid diagnosis is not stored or returned as a completed result.
-
----
-
-## Final Report
-
-Purpose: Presents the validated investigation result to the engineer.
-
-Input: Validated `FinalDiagnosis`.
-
-Output: Structured report containing:
-
-* cause
-* confidence
-* evidence_ids
-* alternatives
-* recommendation
-
-The report is produced only after diagnosis validation succeeds.
-
----
-
-## End-to-End Flow
-
-1. Intake validates the investigation request.
-2. The runtime creates `InvestigationState`.
-3. The runtime invokes a Kubernetes collector.
-4. The collector returns a `ToolResult`.
-5. The runtime stores the result in `InvestigationState.tool_results`.
-6. The evidence normalizer converts the result into zero or more `EvidenceRecord`s.
-7. The records are appended to `InvestigationState.evidence`.
-8. The runtime repeats collection until sufficient evidence is available or a budget is exhausted.
-9. The decision model produces a candidate `FinalDiagnosis`.
-10. The validator checks its schema and evidence references.
-11. A valid diagnosis is stored in `InvestigationState.decision`.
-12. The final report is returned to the engineer.
-
----
-
-## Same-Day Boundary
-
-This workflow does not require:
-
-* Web interface
-* API service
-* Database
-* Prometheus or external observability systems
-* Persistent memory
-* Plugins
-* Cloud deployment
-* Kubernetes write actions
-* Multi-agent coordination
-* Automated remediation
+v0 requires no database, artifact store, service, web interface, application logs, Prometheus, generic registry, planner, multi-agent framework, background process, Kubernetes write capability, or remediation component.

@@ -1,138 +1,132 @@
-# Broken Readiness Probe Scenario
+# Reference Scenario: Broken HTTP Readiness Path
 
-This document defines the reference scenario for the first OpenOps implementation.
+This is the only v0 implementation, demo, and live-evaluation scenario. Phase 2 manifests and lifecycle commands must implement this specification exactly.
 
-Every implementation, demo, and evaluation must use this scenario.
+## Fixed identities
 
----
+| Item | Value |
+| --- | --- |
+| `kind` cluster name | `openops-lab` |
+| Administrative context | `kind-openops-lab` |
+| Runtime read-only context | `openops-reader@kind-openops-lab` |
+| Namespace | `openops-lab` |
+| ServiceAccount | `openops-reader` |
+| Deployment | `readiness-demo` |
+| Replica count | 1 |
+| Container | `web` |
+| Selector label | `app.kubernetes.io/name=readiness-demo` |
+| Container port | 80 |
 
-# Objective
+The workload uses the official image `nginx:1.27.5-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10`. The tag documents the intended release and the multi-platform manifest digest makes the scenario input immutable.
 
-Investigate a Kubernetes Deployment whose Pods fail to become Ready because of an incorrectly configured readiness probe.
+The Deployment strategy is `Recreate`. This is required so fault injection removes the healthy Pod before creating the faulty Pod; a default rolling update could leave the old ready Pod available and make the expected Deployment status ambiguous.
 
----
+## Application behavior
 
-# Initial State
+The NGINX process listens on container port 80.
 
-A local Kubernetes cluster is running.
+- `GET /` returns HTTP 200 and is the valid endpoint used by the healthy baseline.
+- `GET /ready` returns HTTP 404 because no such resource exists.
+- The process remains running when either endpoint is probed.
 
-The target Deployment:
+No Service or external network dependency is required. The kubelet performs the probe directly against the Pod.
 
-* exists
-* is successfully scheduled
-* starts normally
-* creates running Pods
+## Healthy baseline
 
-The application itself is healthy.
+Before fault injection, the Deployment uses this readiness probe:
 
----
+| Setting | Value |
+| --- | --- |
+| Type | HTTP GET |
+| Scheme | HTTP |
+| Path | `/` |
+| Port | 80 |
+| `initialDelaySeconds` | 0 |
+| `periodSeconds` | 2 |
+| `timeoutSeconds` | 1 |
+| `successThreshold` | 1 |
+| `failureThreshold` | 1 |
 
-# Injected Fault
+The baseline is valid only when:
 
-The Deployment specifies an invalid readiness probe.
+- the Deployment has one available replica;
+- the Pod phase is `Running`;
+- the Pod Ready condition is `True`;
+- container `web` is ready; and
+- its restart count is zero.
 
-Example faults include:
+The setup workflow must verify this state before applying the fault.
 
-* incorrect HTTP path
-* incorrect port
-* incorrect probe type
+## Single injected fault
 
-The application never satisfies the readiness probe.
+Fault injection changes exactly one field:
 
----
+```text
+readinessProbe.httpGet.path: / -> /ready
+```
 
-# Observable Symptoms
+Every other image, port, probe setting, replica setting, label, and application behavior remains unchanged.
 
-The engineer observes:
+## Expected faulty state
 
-* Pods remain `Running` but not `Ready`.
-* The Deployment does not become Available.
-* Kubernetes reports repeated readiness probe failures.
+After the `Recreate` rollout replaces the healthy Pod and at least two probe periods have elapsed:
 
-The investigation begins from these symptoms.
+- exactly one target Pod exists;
+- the Pod phase is `Running`;
+- the Pod Ready condition is `False`;
+- container `web` has `ready: false`;
+- its restart count is zero;
+- the Deployment has one desired replica and zero available replicas;
+- the stored Deployment probe configuration shows HTTP path `/ready` on port 80; and
+- a target Pod Event has type `Warning`, reason `Unhealthy`, and reports a readiness-probe HTTP 404 failure.
 
----
+Kubernetes versions may vary the complete Event sentence. Evaluation matches the involved Pod, `Unhealthy` reason, readiness-probe meaning, and HTTP status 404 rather than one exact message string.
 
-# Ground Truth
+## Ground truth
 
-The root cause is an incorrectly configured readiness probe.
+The application process is healthy and responding over HTTP. Kubernetes cannot mark the Pod Ready because the configured readiness path `/ready` returns 404. The valid baseline endpoint is `/`.
 
-The application is functioning correctly.
+The expected cause is:
 
-The investigation should conclude that Kubernetes is unable to mark the Pods as Ready because the probe configuration does not match the application.
+> The Pod remains unready because its HTTP readiness probe requests `/ready` on port 80 and receives HTTP 404.
 
----
+Expected confidence is `high` when the report cites all three evidence categories:
 
-# Relevant Evidence
+1. the configured readiness path and port;
+2. the running-but-unready Pod/container state with zero restarts; and
+3. the `Unhealthy` readiness-probe Event with HTTP 404.
 
-Useful evidence includes:
+The expected recommendation is to configure the readiness probe to use an endpoint that returns a successful status, `/` in this reference application. OpenOps does not apply the change.
 
-* Deployment specification
-* Readiness probe configuration
-* Pod status
-* Pod conditions
-* Container readiness state
-* Kubernetes Events reporting readiness probe failures
+## Required absence of distractions
 
-No other evidence is required to identify the fault.
+The scenario is invalid if any of the following occurs:
 
----
+- image pull failure;
+- scheduling failure;
+- CrashLoopBackOff or application exit;
+- container restart;
+- incorrect container port;
+- DNS or external networking dependency;
+- resource pressure or node failure;
+- liveness or startup probe failure;
+- second workload failure; or
+- missing read-only authorization.
 
-# Distractions
+## Lifecycle requirements for Phase 2
 
-The scenario must not contain unrelated failures.
+The implementation must provide one documented entry point for each action:
 
-Specifically:
+1. create the pinned `kind` cluster;
+2. install the namespace, read-only identity, and healthy workload;
+3. verify the healthy baseline;
+4. inject only the readiness-path fault;
+5. verify the expected faulty state;
+6. reset to and verify the healthy baseline; and
+7. tear down the cluster.
 
-* No CrashLoopBackOff
-* No image pull failures
-* No scheduling failures
-* No resource pressure
-* No node failures
-* No networking failures
-* No DNS failures
-* No application crashes
+These lifecycle actions run under the administrative context and are scenario tooling, not OpenOps runtime capabilities.
 
-Only the readiness probe is broken.
+## Forbidden OpenOps actions
 
----
-
-# Expected Diagnosis
-
-Cause: An incorrectly configured readiness probe prevents Kubernetes from marking the Pods as Ready.
-
-Confidence: High.
-
-Evidence: The diagnosis cites the relevant `EvidenceRecord` IDs collected during the investigation.
-
-Recommendation: Verify and correct the readiness probe configuration so it matches the application's health endpoint.
-
----
-
-# Forbidden Actions
-
-OpenOps must not:
-
-* Modify the Deployment
-* Patch the readiness probe
-* Restart Pods
-* Execute commands inside containers
-* Create debugging resources
-* Apply manifests
-* Perform automatic remediation
-
-The investigation ends with a diagnosis and recommendation only.
-
----
-
-# Reproducibility Requirements
-
-Another developer must be able to recreate this scenario by:
-
-1. Deploying the application.
-2. Configuring an invalid readiness probe.
-3. Observing Pods remain `Running` but not `Ready`.
-4. Running OpenOps against the Deployment.
-5. Receiving the expected diagnosis.
-
-No additional failures or environmental assumptions are required.
+During investigation OpenOps must not modify the Deployment, change the probe, restart or delete the Pod, read container logs, execute in the container, create a resource, switch to the administrative context, or perform remediation.

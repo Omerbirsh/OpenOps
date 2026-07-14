@@ -22,7 +22,7 @@ The current project is small and does not require a compiled language or a distr
 
 ## Decision
 
-OpenOps will use Python as its implementation language.
+OpenOps will use Python 3.12 as its initial implementation language. Adoption of a later minor version requires an explicit dependency and test update.
 
 OpenOps will use `uv` for:
 
@@ -35,6 +35,8 @@ OpenOps will use `uv` for:
 Project metadata and dependencies will be defined in `pyproject.toml`.
 
 The lock file produced by `uv` will be committed to the repository.
+
+Pydantic v2 will implement runtime validation for the four v0 contracts. It is a schema library for the current workflow, not a generic application framework.
 
 ## Alternatives Considered
 
@@ -62,7 +64,7 @@ Rejected because the first workflow is backend and systems-oriented, and Python 
 
 * Fast implementation and iteration.
 * Strong ecosystem for Kubernetes and model integrations.
-* Structured validation can be implemented with Python libraries such as Pydantic.
+* Structured validation uses one declared library consistently.
 * `uv` provides one tool for environment and dependency management.
 * Locked dependencies make local and CI environments reproducible.
 
@@ -82,9 +84,7 @@ The decision is reversible because the architecture is defined through explicit 
 * `EvidenceRecord`
 * `FinalDiagnosis`
 
-These contracts should remain independent of Python-specific behavior.
-
-A future implementation in another language must preserve the same observable contracts and workflow boundaries.
+These are v0 implementation contracts, not permanent public protocols. A future implementation may revise them deliberately when measured needs justify the change.
 
 ## Revisit Trigger
 

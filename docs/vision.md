@@ -1,11 +1,11 @@
-# OpenOps - First Commit - At a high level - What is this all about?
+# OpenOps Vision
 
-As a NOC engineer, I see systems crash everyday for any reasson.
-When it happens, money is leaking. So idealy, there isn't much time to think.
-Thats why I believe making a human-like capable reasoning machine on top of complex systems can be huge.
+Production incidents are expensive and time-sensitive. Operations engineers need conclusions they can inspect, challenge, and trace to the evidence that produced them.
 
-My long-term vision is for the reasoning mechanism to have access to the operational data and troubleshooting tools available to the NOC.
+OpenOps is intended to become an evidence-driven operations investigation runtime. Its long-term direction is a reasoning system that can use the operational evidence and investigation tools available to NOC, SRE, DevOps, platform, and operations engineers.
 
-The first versions deliberately begin with bounded Kubernetes-native evidence. The architecture should allow evidence sources and investigation capabilities to expand over time without changing the core evidence-driven model.
+The system should collect evidence, preserve provenance, normalize source-specific output into stable factual observations, reason over those observations, express uncertainty, and produce diagnoses that can be evaluated. It should eventually support more operational systems and investigation workflows without turning raw tool output into ungrounded model speculation.
 
-The philosophy behind OpenOps is to move operations away from constantly firefighting and applying temporary fixes. Instead of treating symptoms, the product is built to help engineers identify root causes, understand why failures happen, and resolve incidents in a way that reduces the chance of the same problem returning.
+OpenOps is not a generic chatbot and is not a model that reads arbitrary logs and guesses. Its core is the structured path from controlled evidence collection to a traceable decision.
+
+The first implementation proves only that path for one local Kubernetes readiness-probe failure. Broader capabilities are added only after the narrow workflow works repeatedly and measurably.

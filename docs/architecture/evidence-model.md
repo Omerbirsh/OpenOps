@@ -1,109 +1,58 @@
 # EvidenceRecord v0
 
-An `EvidenceRecord` represents a single observation collected during an investigation.
+An `EvidenceRecord` is one immutable factual observation produced by deterministic normalization of a stored `ToolResult`.
 
-Every piece of evidence has a stable identity, records where it came from, and preserves enough metadata for the final diagnosis to reference it without ambiguity.
+Evidence is the only collected Kubernetes information available to the decision model. A record describes what was observed; it does not state a cause or recommendation.
 
----
+## Fields
 
-## id
+| Field | Type | Owner and rule |
+| --- | --- | --- |
+| `id` | string | Normalizer-assigned, unique within the investigation. IDs use stable sequence form `evidence-001`, `evidence-002`, and so on after canonical sorting. |
+| `source_tool` | enum | Copied from the source `ToolResult`: `kubernetes_deployment`, `kubernetes_pods`, or `kubernetes_events`. |
+| `timestamp` | timestamp | Copied from the source `ToolResult.collected_at`; it is collection time, not event occurrence time. |
+| `target` | object | `cluster_context`, `namespace`, `resource_kind`, and `resource_name`. |
+| `observation` | string, 1-512 characters | A fact generated from a fixed normalizer template. |
+| `sensitivity` | enum | `internal` or `sensitive`. All model-visible v0 records must be `internal`; a potential secret is not emitted as evidence. |
+| `raw_reference` | string | Exact copy of the source `ToolResult.raw_reference`. |
 
-Purpose: Uniquely identifies the evidence within an investigation.
+The normalizer owns all fields. Records are appended to `InvestigationState.evidence` and never modified.
 
-Type: Unique identifier.
+## Provenance invariants
 
-Lifecycle Owner: Assigned by the evidence normalization stage.
-Never changes.
+- `raw_reference` must resolve to one `ToolResult.data` value in the same `InvestigationState`.
+- `source_tool` and `timestamp` must match that `ToolResult`.
+- A failed `ToolResult` with no data produces no evidence.
+- A successful or partial result may produce zero or more records.
+- Multiple records may reference the same result data.
+- The report and diagnosis cite evidence by `EvidenceRecord.id`, never by `ToolResult.id` or `raw_reference`.
 
----
+## Deterministic normalization
 
-## source_tool
+Normalization is application code, not a model call. For identical objective and fixture input, it must produce the same ordered observations and IDs.
 
-Purpose: Records which tool produced the evidence.
+The normalizer:
 
-Type: Tool identifier.
+1. processes results in fixed collector order;
+2. processes Pods by resource name;
+3. processes Events in stored collector order: `last_seen` descending, involved-object UID, reason, and Event UID;
+4. reads only the allowlisted fields documented for each collector;
+5. generates observations from controlled templates rather than copying arbitrary object text; and
+6. stops with an investigation failure if more than 20 evidence records would be produced.
 
-Examples
+Examples of valid observations are:
 
-- kubectl_get_pods
-- kubectl_describe_pod
-- kubectl_get_events
+- `Deployment readiness-demo has 1 desired replica and 0 available replicas.`
+- `Container web has an HTTP readiness probe configured for path /ready on port 80.`
+- `Pod readiness-demo-abc is Running and its Ready condition is False.`
+- `Container web is not ready and has restarted 0 times.`
+- `Kubernetes reported an Unhealthy readiness probe result with HTTP status 404 for Pod readiness-demo-abc.`
 
-Lifecycle Owner: Assigned by the evidence normalization stage.
-Never changes.
+The following are diagnoses and must not be emitted as evidence:
 
----
+- `The readiness probe is misconfigured.`
+- `The application should change its health endpoint.`
 
-## timestamp
+## Untrusted text
 
-Purpose: Records when the evidence was collected.
-
-Type: Timestamp.
-
-Lifecycle Owner: Assigned by the evidence normalization stage.
-Never changes.
-
----
-
-## target
-
-Purpose: Identifies the Kubernetes resource the evidence refers to.
-
-Type: Structured target reference.
-
-Contains:
-- cluster_context
-- namespace
-- resource_kind
-- resource_name
-
-Lifecycle Owner: Assigned by the evidence normalization stage.
-Never changes.
-
----
-
-## observation
-
-Purpose: Stores the normalized factual observation extracted from the tool output.
-
-Type: Text.
-
-Examples
-
-- Readiness probe failed with HTTP 404.
-- Pod is Running but 0/1 Ready.
-
-Lifecycle Owner: Written by the evidence normalization stage.
-Never changes.
-
----
-
-## sensitivity
-
-Purpose: Classifies whether the evidence contains sensitive information.
-
-Type: Enumeration.
-
-Values
-- public
-- internal
-- sensitive
-
-Lifecycle Owner: Assigned by the evidence normalization stage.
-
----
-
-## raw_reference
-
-Purpose: Points to the original tool output from which the observation was derived.
-
-Type: Reference metadata.
-
-Examples
-- Stored stdout and stderr artifact path
-- Preserved Kubernetes API response location
-- Raw command output artifact identifier
-- Log output location
-
-Lifecycle Owner: Assigned by the evidence normalization stage.
-Never changes.
+Labels, annotations, managed fields, environment variables, volume content, and complete Event messages are never copied into evidence. For the reference scenario, the Event normalizer may extract only the involved target, Event type and reason, occurrence metadata, the fact that the failure concerns readiness, and a recognized HTTP status code. Unknown Event message text remains in bounded `ToolResult.data` and is not sent to the model.
