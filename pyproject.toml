@@ -8,6 +8,9 @@ version = "0.0.0"
 description = "Evidence-driven operations investigation runtime"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
+# Phase 1 implements only a standard-library installation/CLI smoke path. Runtime
+# libraries are added when Phase 2 code consumes them; speculative dependencies
+# would violate the roadmap's same-day-use rule.
 dependencies = []
 
 [project.scripts]

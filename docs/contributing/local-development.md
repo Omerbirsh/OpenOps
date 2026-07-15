@@ -17,7 +17,7 @@ winget install --id Kubernetes.kubectl --exact --scope user
 winget install --id Kubernetes.kind --exact --scope user
 ```
 
-If Git is missing, Git for Windows can be installed separately with `winget install --id Git.Git --exact`; its installer may require administrator approval. Restart the shell after installation. Docker Desktop also requires a separate system-level installation and is not installed by the repository setup.
+If Git is missing, Git for Windows can be installed separately with `winget install --id Git.Git --exact`; its installer may require administrator approval. Restart the shell after installation. Docker Engine must be installed in the same environment that will run `kind`; on the recorded workstation, Docker, kubectl, and kind run together in WSL.
 
 For other operating systems, use the official [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/), [kubectl installation guide](https://kubernetes.io/docs/tasks/tools/), and [kind quick start](https://kind.sigs.k8s.io/docs/user/quick-start/).
 
@@ -130,6 +130,8 @@ kubectl config current-context
 kubectl config get-contexts -o name
 ```
 
+Run those commands inside WSL when using the recorded Windows/WSL setup. From PowerShell, prefix each command with `wsl --`, for example `wsl -- docker version` and `wsl -- kind version`.
+
 If Docker is installed, verify the daemon with one disposable container:
 
 ```text
@@ -143,4 +145,13 @@ Do not issue a Kubernetes cluster request unless the selected context is an expl
 - No investigation schemas, collectors, model integration, scenario manifests, or functional investigation CLI exist yet.
 - No environment variables are consumed.
 - No live test is implemented.
-- No project license has been accepted; the roadmap's Apache-2.0 entry is only a planning assumption.
+- The Phase 1 runtime dependency set is intentionally empty because the install/CLI smoke path uses only the Python standard library. Add Pydantic, the Kubernetes client, a CLI library, or a provider SDK only in the phase that adds code importing it.
+
+## Workstation readiness record
+
+Last verified on 2026-07-16 on the Windows development workstation:
+
+- Python 3.12.5 and uv 0.11.28 are available on Windows.
+- WSL has Docker Engine 29.3.1, kubectl v1.36.2, and kind v0.32.0. A disposable `hello-world` container ran successfully, and `kind get clusters` reached Docker successfully.
+- No Kubernetes context is selected and no kind clusters exist, so automation cannot accidentally target an existing cluster.
+- The repository uses the public `Omerbirsh/OpenOps` origin over HTTPS. Local Git identity matches the existing repository author, and authenticated GitHub access has admin/push permission.

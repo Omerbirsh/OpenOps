@@ -4,7 +4,7 @@ OpenOps is an evidence-driven operations investigation runtime. It is intended t
 
 ## Current status
 
-Phase 0 architecture and the repository-controlled portion of Phase 1 are present. The Python package installs and exposes a deliberately nonfunctional console entry point, and deterministic formatting, linting, typing, unit-test, secret-check, and CI commands are configured. Full workstation readiness still depends on local Git/Docker setup and safe Phase 2 kube contexts.
+Phase 0 architecture and the Phase 1 repository/development foundation are complete. The Python package installs and exposes a deliberately nonfunctional console entry point, and deterministic formatting, linting, typing, unit-test, secret-check, and CI commands are configured. Docker, kubectl, and kind are verified together in WSL for the later disposable-cluster workflow.
 
 The Kubernetes investigation runtime is **not implemented or usable yet**. There are no collectors, model integration, scenario manifests, general Kubernetes diagnosis, or remediation capabilities. The project is not production-ready.
 

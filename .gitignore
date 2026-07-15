@@ -39,7 +39,9 @@ service-account*.json
 
 # Editors and operating systems
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 *.swp
 *.swo
 .DS_Store
