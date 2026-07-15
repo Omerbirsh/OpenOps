@@ -1,0 +1,54 @@
+[build-system]
+requires = ["uv_build>=0.11.28,<0.12.0"]
+build-backend = "uv_build"
+
+[project]
+name = "openops"
+version = "0.0.0"
+description = "Evidence-driven operations investigation runtime"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.scripts]
+openops = "openops.cli:main"
+
+[project.urls]
+Repository = "https://github.com/Omerbirsh/OpenOps"
+
+[dependency-groups]
+dev = [
+    "detect-secrets>=1.5.0",
+    "mypy>=2.3.0",
+    "pytest>=9.1.1",
+    "ruff>=0.15.21",
+]
+
+[tool.uv]
+required-version = "==0.11.28"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests", "scripts"]
+strict = true
+pretty = true
+show_error_codes = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers -m unit"
+testpaths = ["tests"]
+markers = [
+    "unit: deterministic isolated tests run by default",
+    "integration: deterministic multi-component tests selected explicitly",
+    "live_cluster: tests requiring an explicitly selected disposable Kubernetes cluster",
+    "live_model: tests requiring network access and configured model credentials",
+]
