@@ -1,0 +1,113 @@
+{
+  "collection_warnings": [],
+  "collector_summaries": [
+    {
+      "duration_ms": 31,
+      "error_category": null,
+      "id": "tool-001",
+      "source_tool": "kubernetes_deployment",
+      "status": "success",
+      "truncated": false
+    },
+    {
+      "duration_ms": 16,
+      "error_category": null,
+      "id": "tool-002",
+      "source_tool": "kubernetes_pods",
+      "status": "success",
+      "truncated": false
+    },
+    {
+      "duration_ms": 15,
+      "error_category": null,
+      "id": "tool-003",
+      "source_tool": "kubernetes_events",
+      "status": "success",
+      "truncated": false
+    }
+  ],
+  "decision": {
+    "alternatives": [],
+    "cause": "The Pod remains unready because its HTTP readiness probe requests /ready on port 80 and receives HTTP 404.",
+    "confidence": "high",
+    "evidence_ids": [
+      "evidence-002",
+      "evidence-003",
+      "evidence-005"
+    ],
+    "recommendation": "Configure the readiness probe to use an endpoint that returns success, / for this reference application; OpenOps will not apply the change."
+  },
+  "evidence": [
+    {
+      "id": "evidence-001",
+      "observation": "Deployment readiness-demo has 1 desired replica and 0 available replicas.",
+      "source_tool": "kubernetes_deployment",
+      "target": {
+        "cluster_context": "openops-reader@kind-openops-lab",
+        "namespace": "openops-lab",
+        "resource_kind": "Deployment",
+        "resource_name": "readiness-demo"
+      },
+      "timestamp": "2026-07-19T16:01:12.488113+00:00"
+    },
+    {
+      "id": "evidence-002",
+      "observation": "Container web has an HTTP readiness probe configured for path /ready on port 80.",
+      "source_tool": "kubernetes_deployment",
+      "target": {
+        "cluster_context": "openops-reader@kind-openops-lab",
+        "namespace": "openops-lab",
+        "resource_kind": "Deployment",
+        "resource_name": "readiness-demo"
+      },
+      "timestamp": "2026-07-19T16:01:12.488113+00:00"
+    },
+    {
+      "id": "evidence-003",
+      "observation": "Pod readiness-demo-b94fc6947-l5c8h is Running and its Ready condition is False.",
+      "source_tool": "kubernetes_pods",
+      "target": {
+        "cluster_context": "openops-reader@kind-openops-lab",
+        "namespace": "openops-lab",
+        "resource_kind": "Pod",
+        "resource_name": "readiness-demo-b94fc6947-l5c8h"
+      },
+      "timestamp": "2026-07-19T16:01:12.495406+00:00"
+    },
+    {
+      "id": "evidence-004",
+      "observation": "Container web is running, is not ready, and has restarted 0 times.",
+      "source_tool": "kubernetes_pods",
+      "target": {
+        "cluster_context": "openops-reader@kind-openops-lab",
+        "namespace": "openops-lab",
+        "resource_kind": "Pod",
+        "resource_name": "readiness-demo-b94fc6947-l5c8h"
+      },
+      "timestamp": "2026-07-19T16:01:12.495406+00:00"
+    },
+    {
+      "id": "evidence-005",
+      "observation": "Kubernetes reported an Unhealthy readiness probe result with HTTP status 404 for Pod readiness-demo-b94fc6947-l5c8h.",
+      "source_tool": "kubernetes_events",
+      "target": {
+        "cluster_context": "openops-reader@kind-openops-lab",
+        "namespace": "openops-lab",
+        "resource_kind": "Pod",
+        "resource_name": "readiness-demo-b94fc6947-l5c8h"
+      },
+      "timestamp": "2026-07-19T16:01:12.514652+00:00"
+    }
+  ],
+  "failure": null,
+  "objective": {
+    "cluster_context": "openops-reader@kind-openops-lab",
+    "namespace": "openops-lab",
+    "symptom": "Pod is Running but not Ready",
+    "time_window_seconds": 1800,
+    "workload_kind": "Deployment",
+    "workload_name": "readiness-demo"
+  },
+  "phase": "finished",
+  "status": "completed"
+}

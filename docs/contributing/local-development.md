@@ -1,6 +1,6 @@
 # Local Development
 
-This is the canonical Phase 1 setup and quality-check guide. The Kubernetes investigator is not implemented yet; these steps install and validate only the repository foundation.
+This is the canonical setup and quality-check guide for the Phase 2 walking skeleton.
 
 ## 1. Prerequisites
 
@@ -48,10 +48,10 @@ This creates `.venv`, installs the editable `openops` package, and installs only
 ## 5. Verify the package entry point
 
 ```text
-uv run openops
+uv run openops --help
 ```
 
-The command currently prints that the investigation runtime is not implemented and exits with code 2. That is intentional in Phase 1; it proves packaging without advertising a false capability.
+The command documents the single synchronous `investigate` workflow. A real run requires the explicit reader context created by the [Phase 2 quick start](../user/quick-start.md).
 
 ## 6. Format and check formatting
 
@@ -95,7 +95,7 @@ uv run pytest -m live_cluster
 uv run pytest -m live_model
 ```
 
-Phase 1 contains no tests in these categories. Future live tests must remain opt-in and must validate their own prerequisites before contacting an external system.
+Live tests remain opt-in and validate their prerequisites before contacting an external system. `live_model` performs three paid model calls; run it only against the disposable faulted lab.
 
 ## 11. Check for likely secrets
 
@@ -130,7 +130,7 @@ kubectl config current-context
 kubectl config get-contexts -o name
 ```
 
-Run those commands inside WSL when using the recorded Windows/WSL setup. From PowerShell, prefix each command with `wsl --`, for example `wsl -- docker version` and `wsl -- kind version`.
+Run all three tools in the same environment as Docker Engine. Docker Desktop or WSL are both supported when `kind` can reach the selected Docker daemon.
 
 If Docker is installed, verify the daemon with one disposable container:
 
@@ -138,20 +138,20 @@ If Docker is installed, verify the daemon with one disposable container:
 docker run --rm hello-world
 ```
 
-Do not issue a Kubernetes cluster request unless the selected context is an explicitly created local disposable context. Phase 2 will create administrative context `kind-openops-lab` and separate read-only runtime context `openops-reader@kind-openops-lab`; neither exists as part of Phase 1.
+Do not issue a Kubernetes cluster request unless the selected context is the explicitly created local disposable context. Scenario tooling uses isolated administrative context `kind-openops-lab`; the runtime accepts only `openops-reader@kind-openops-lab`.
 
 ## Current limitations
 
-- No investigation schemas, collectors, model integration, scenario manifests, or functional investigation CLI exist yet.
-- No environment variables are consumed.
-- No live test is implemented.
-- The Phase 1 runtime dependency set is intentionally empty because the install/CLI smoke path uses only the Python standard library. Add Pydantic, the Kubernetes client, a CLI library, or a provider SDK only in the phase that adds code importing it.
+- Only the exact broken-readiness target is accepted.
+- Only Deployment, Pod, and Event evidence is collected.
+- The runtime has no retries, persistence service, generic tool registry, shell path, writes, logs, or remediation.
+- `OPENOPS_KUBECONFIG` selects the isolated reader kubeconfig, `OPENAI_API_KEY` authenticates the live model call, and `OPENOPS_MODEL` optionally overrides the documented default.
 
 ## Workstation readiness record
 
-Last verified on 2026-07-16 on the Windows development workstation:
+Last verified on 2026-07-19 on the Windows development workstation:
 
 - Python 3.12.5 and uv 0.11.28 are available on Windows.
-- WSL has Docker Engine 29.3.1, kubectl v1.36.2, and kind v0.32.0. A disposable `hello-world` container ran successfully, and `kind get clusters` reached Docker successfully.
-- No Kubernetes context is selected and no kind clusters exist, so automation cannot accidentally target an existing cluster.
+- Docker Engine 29.6.1, kubectl v1.36.1, and kind v0.32.0 are available together through Docker Desktop.
+- The pinned Kubernetes v1.36.1 kind cluster, healthy baseline, single injected fault, reader RBAC denials, and live official-client collection were verified.
 - The repository uses the public `Omerbirsh/OpenOps` origin over HTTPS. Local Git identity matches the existing repository author, and authenticated GitHub access has admin/push permission.

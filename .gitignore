@@ -49,6 +49,7 @@ Thumbs.db
 Desktop.ini
 
 # Local scratch files
+.openops-lab/
 tmp/
 temp/
 *.log

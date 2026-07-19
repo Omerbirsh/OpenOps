@@ -1,0 +1,31 @@
+{
+  "id": "tool-003",
+  "source_tool": "kubernetes_events",
+  "collected_at": "2026-07-19T12:00:02Z",
+  "status": "success",
+  "data": {
+    "events": [
+      {
+        "uid": "event-uid",
+        "type": "Warning",
+        "reason": "Unhealthy",
+        "message": "Readiness probe failed: HTTP probe failed with statuscode: 404",
+        "count": 3,
+        "first_seen": "2026-07-19T11:59:55Z",
+        "last_seen": "2026-07-19T12:00:02Z",
+        "involved_object": {
+          "uid": "pod-uid",
+          "kind": "Pod",
+          "namespace": "openops-lab",
+          "name": "readiness-demo-abc"
+        }
+      }
+    ]
+  },
+  "raw_reference": "tool-result:tool-003#/data",
+  "error_category": null,
+  "error_message": null,
+  "retryable": false,
+  "duration_ms": 8,
+  "truncated": false
+}

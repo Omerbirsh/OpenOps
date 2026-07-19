@@ -4,13 +4,13 @@ OpenOps is an evidence-driven operations investigation runtime. It is intended t
 
 ## Current status
 
-Phase 0 architecture and the Phase 1 repository/development foundation are complete. The Python package installs and exposes a deliberately nonfunctional console entry point, and deterministic formatting, linting, typing, unit-test, secret-check, and CI commands are configured. Docker, kubectl, and kind are verified together in WSL for the later disposable-cluster workflow.
+Phase 0 architecture, the Phase 1 repository foundation, and the bounded Phase 2 walking skeleton are implemented. OpenOps can reproduce one broken-readiness incident in a disposable `kind` cluster, collect allowlisted Deployment/Pod/Event evidence through the official Kubernetes client, make one structured model call, independently validate evidence IDs, and render a cited report.
 
-The Kubernetes investigation runtime is **not implemented or usable yet**. There are no collectors, model integration, scenario manifests, general Kubernetes diagnosis, or remediation capabilities. The project is not production-ready.
+The default test suite runs the entire workflow with fixtures and a fake provider, without a cluster, network, or paid model call. Live-cluster and live-model checks are explicit opt-in gates. OpenOps remains a fixed local demonstration, not a general Kubernetes investigator or production-ready system.
 
-## First implementation target
+## Implemented boundary
 
-The first implementation remains deliberately fixed:
+The first implementation is deliberately fixed:
 
 - one local `kind` cluster;
 - one namespace and one Deployment;
@@ -22,7 +22,7 @@ The first implementation remains deliberately fixed:
 - one human-readable report with cited evidence;
 - no remediation.
 
-The model will not select tools, construct Kubernetes requests, or control collection.
+The model does not select tools, construct Kubernetes requests, or control collection.
 
 ## Development setup
 
@@ -36,6 +36,8 @@ uv run pytest
 
 See [Local development](docs/contributing/local-development.md) for the complete setup, quality gate, marker policy, and safe workstation checks.
 
+For the disposable lab and first real investigation, follow the [Phase 2 quick start](docs/user/quick-start.md).
+
 ## Documentation
 
 - [Product charter](docs/product/charter.md)
@@ -44,6 +46,7 @@ See [Local development](docs/contributing/local-development.md) for the complete
 - [Threat model](docs/architecture/security/threat-model.md)
 - [Reference scenario](docs/scenarios/broken-readiness.md)
 - [Acceptance criteria](docs/product/acceptance.md)
+- [Phase 2 verification record](docs/product/phase-2-verification.md)
 - [Non-goals](docs/product/non-goals.md)
 - [Deferred capabilities](docs/planning/deferred.md)
 - [Long-term vision](docs/vision.md)

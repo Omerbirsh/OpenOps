@@ -1,0 +1,44 @@
+{
+  "id": "tool-001",
+  "source_tool": "kubernetes_deployment",
+  "collected_at": "2026-07-19T12:00:00Z",
+  "status": "success",
+  "data": {
+    "uid": "deployment-uid",
+    "name": "readiness-demo",
+    "namespace": "openops-lab",
+    "generation": 2,
+    "desired_replicas": 1,
+    "ready_replicas": 0,
+    "available_replicas": 0,
+    "unavailable_replicas": 1,
+    "observed_generation": 2,
+    "strategy": "Recreate",
+    "selector": {"app.kubernetes.io/name": "readiness-demo"},
+    "containers": [
+      {
+        "name": "web",
+        "readiness_probe": {
+          "type": "http_get",
+          "scheme": "HTTP",
+          "path": "/ready",
+          "port": 80,
+          "initial_delay_seconds": 0,
+          "period_seconds": 2,
+          "timeout_seconds": 1,
+          "success_threshold": 1,
+          "failure_threshold": 1
+        }
+      }
+    ],
+    "conditions": [
+      {"type": "Available", "status": "False", "reason": "MinimumReplicasUnavailable"}
+    ]
+  },
+  "raw_reference": "tool-result:tool-001#/data",
+  "error_category": null,
+  "error_message": null,
+  "retryable": false,
+  "duration_ms": 7,
+  "truncated": false
+}

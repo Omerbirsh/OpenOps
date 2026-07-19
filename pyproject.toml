@@ -4,14 +4,17 @@ build-backend = "uv_build"
 
 [project]
 name = "openops"
-version = "0.0.0"
+version = "0.0.1"
 description = "Evidence-driven operations investigation runtime"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-# Phase 1 implements only a standard-library installation/CLI smoke path. Runtime
-# libraries are added when Phase 2 code consumes them; speculative dependencies
-# would violate the roadmap's same-day-use rule.
-dependencies = []
+# Phase 2 consumes only the schema, Kubernetes client, and model SDK dependencies
+# required by the fixed walking skeleton.
+dependencies = [
+    "kubernetes>=34,<35",
+    "openai>=2.15,<3",
+    "pydantic>=2.12,<3",
+]
 
 [project.scripts]
 openops = "openops.cli:main"
@@ -40,11 +43,15 @@ select = ["E4", "E7", "E9", "F", "I", "B", "UP", "SIM"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "scenarios"]
 strict = true
 pretty = true
 show_error_codes = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["kubernetes", "kubernetes.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers -m unit"
